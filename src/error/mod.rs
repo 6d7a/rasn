@@ -17,7 +17,7 @@ pub mod strings {
 
 pub use decode::DecodeErrorKind;
 pub use decode::{
-    BerDecodeErrorKind, CodecDecodeError, DecodeError, DerDecodeErrorKind, JerDecodeErrorKind,
+    BerDecodeErrorKind, CodecDecodeError, DecodeError, DerDecodeErrorKind, JerDecodeErrorKind, XerDecodeErrorKind
 };
 pub use encode::EncodeErrorKind;
-pub use encode::{BerEncodeErrorKind, CodecEncodeError, EncodeError, JerEncodeErrorKind};
+pub use encode::{BerEncodeErrorKind, CodecEncodeError, EncodeError, JerEncodeErrorKind, XerEncodeErrorKind};

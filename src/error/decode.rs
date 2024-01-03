@@ -21,6 +21,8 @@ pub enum CodecDecodeError {
     Uper(UperDecodeErrorKind),
     Aper(AperDecodeErrorKind),
     Jer(JerDecodeErrorKind),
+    #[cfg(feature = "xer")]
+    Xer(XerDecodeErrorKind),
 }
 
 macro_rules! impl_from {
@@ -40,6 +42,8 @@ impl_from!(Der, DerDecodeErrorKind);
 impl_from!(Uper, UperDecodeErrorKind);
 impl_from!(Aper, AperDecodeErrorKind);
 impl_from!(Jer, JerDecodeErrorKind);
+#[cfg(feature = "xer")]
+impl_from!(Xer, XerDecodeErrorKind);
 
 impl From<CodecDecodeError> for DecodeError {
     fn from(error: CodecDecodeError) -> Self {
@@ -304,6 +308,8 @@ impl DecodeError {
             CodecDecodeError::Uper(_) => crate::Codec::Uper,
             CodecDecodeError::Aper(_) => crate::Codec::Aper,
             CodecDecodeError::Jer(_) => crate::Codec::Jer,
+            #[cfg(feature = "xer")]
+            CodecDecodeError:: Xer(_) => crate::Codec:: Xer,
         };
         Self {
             kind: Box::new(DecodeErrorKind::CodecSpecific { inner }),
@@ -544,6 +550,29 @@ pub enum CerDecodeErrorKind {}
 pub enum DerDecodeErrorKind {
     #[snafu(display("Constructed encoding encountered but not allowed."))]
     ConstructedEncodingNotAllowed,
+}
+
+/// An error that occurred when decoding XER.
+#[cfg(feature = "xer")]
+#[derive(Snafu, Debug)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum XerDecodeErrorKind {
+    #[snafu(display("Unexpected end of input while decoding XER XML."))]
+    EndOfXmlInput {},
+    #[snafu(display(
+        "Found mismatching XML value. Expected type {}. Found value {}.",
+        needed,
+        found
+    ))]
+    XmlTypeMismatch {
+        needed: &'static str,
+        found: alloc::string::String,
+    },
+    #[snafu(display("XML parser error: {details}"))]
+    XmlParser { details: String },
+    #[snafu(display("Encoding violates ITU-T X.693 (02/2021): {details}"))]
+    SpecViolation { details: String },
 }
 
 /// An error that occurred when decoding JER.

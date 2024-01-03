@@ -15,6 +15,8 @@ pub enum CodecEncodeError {
     Uper(UperEncodeErrorKind),
     Aper(AperEncodeErrorKind),
     Jer(JerEncodeErrorKind),
+    #[cfg(feature = "xer")]
+    Xer(XerEncodeErrorKind),
 }
 macro_rules! impl_from {
     ($variant:ident, $error_kind:ty) => {
@@ -33,6 +35,8 @@ impl_from!(Der, DerEncodeErrorKind);
 impl_from!(Uper, UperEncodeErrorKind);
 impl_from!(Aper, AperEncodeErrorKind);
 impl_from!(Jer, JerEncodeErrorKind);
+#[cfg(feature = "xer")]
+impl_from!(Xer, XerEncodeErrorKind);
 
 impl From<CodecEncodeError> for EncodeError {
     fn from(error: CodecEncodeError) -> Self {
@@ -173,6 +177,8 @@ impl EncodeError {
             CodecEncodeError::Uper(_) => crate::Codec::Uper,
             CodecEncodeError::Aper(_) => crate::Codec::Aper,
             CodecEncodeError::Jer(_) => crate::Codec::Jer,
+            #[cfg(feature = "xer")]
+            CodecEncodeError::Xer(_) => crate::Codec::Xer,
         };
         Self {
             kind: Box::new(EncodeErrorKind::CodecSpecific { inner }),
@@ -246,12 +252,12 @@ pub enum CerEncodeErrorKind {}
 #[non_exhaustive]
 pub enum DerEncodeErrorKind {}
 
-/// `EncodeError` kinds of `Kind::CodecSpecific` which are specific for UPER.
+/// `EncodeError` kinds of `Kind::CodecSpecific` which are specific for JER.
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum JerEncodeErrorKind {
-    /// Upstream `serde` error
+    /// Upstream `jzon` error
     JsonEncodingError { upstream: alloc::string::String },
     /// Error to be thrown when the JER encoder contains no encoded root value
     #[snafu(display("No encoded JSON root value found!"))]
@@ -272,6 +278,15 @@ pub enum JerEncodeErrorKind {
         /// value failed to encode
         error: alloc::string::FromUtf8Error,
     },
+}
+
+/// `EncodeError` kinds of `Kind::CodecSpecific` which are specific for XER.
+#[derive(Snafu, Debug)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum XerEncodeErrorKind {
+    /// Upstream `xml` error
+    XmlEncodingError { upstream: alloc::string::String },
 }
 
 /// `EncodeError` kinds of `Kind::CodecSpecific` which are specific for UPER.
