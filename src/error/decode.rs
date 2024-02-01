@@ -571,6 +571,11 @@ pub enum XerDecodeErrorKind {
     },
     #[snafu(display("XML parser error: {details}"))]
     XmlParser { details: String },
+    #[snafu(display("Error matching tag names: expected {needed}, found {found}"))]
+    XmlTag {
+        needed: alloc::string::String,
+        found: alloc::string::String,
+    },
     #[snafu(display("Encoding violates ITU-T X.693 (02/2021): {details}"))]
     SpecViolation { details: String },
 }

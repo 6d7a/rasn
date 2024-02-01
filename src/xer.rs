@@ -3,6 +3,8 @@ pub mod enc;
 
 pub(self) const BIT_STRING_TYPE_TAG: &str = "BIT_STRING";
 pub(self) const BOOLEAN_TYPE_TAG: &str = "BOOLEAN";
+pub(self) const BOOLEAN_TRUE_TAG: &str = "true";
+pub(self) const BOOLEAN_FALSE_TAG: &str = "false";
 pub(self) const CHOICE_TYPE_TAG: &str = "CHOICE";
 pub(self) const DURATION_TYPE_TAG: &str = "DURATION";
 pub(self) const EMBEDDED_PDV_TYPE_TAG: &str = "SEQUENCE";
