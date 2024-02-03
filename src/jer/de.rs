@@ -270,12 +270,12 @@ impl crate::Decoder for Decoder {
         D: Fn(&mut Self, usize, crate::Tag) -> Result<FIELDS, Self::Error>,
         F: FnOnce(alloc::vec::Vec<FIELDS>) -> Result<SET, Self::Error>,
     {
-        let mut last = self.stack.pop().ok_or_else(|| JerDecodeErrorKind::eoi())?;
+        let mut last = self.stack.pop().ok_or_else(JerDecodeErrorKind::eoi)?;
         let value_map = last
             .as_object_mut()
             .ok_or_else(|| JerDecodeErrorKind::TypeMismatch {
                 needed: "object",
-                found: alloc::format!("unknown"),
+                found: "unknown".to_string(),
             })?;
         let mut field_indices = SET::FIELDS
             .iter()

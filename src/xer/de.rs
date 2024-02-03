@@ -12,6 +12,8 @@ use crate::{
     Decode,
 };
 
+use self::fields::Field;
+
 use super::{BOOLEAN_FALSE_TAG, BOOLEAN_TYPE_TAG};
 
 const OPTIONAL_ITEM_NOT_PRESENT: &str = "§_NOT_PRESENT_§";
@@ -140,6 +142,11 @@ impl Decoder {
 
     pub fn peek(&self) -> Option<&XmlEvent> {
         self.stack.last().and_then(XerElement::peek)
+    }
+
+    pub fn sort_by_field_tag_order(&mut self, field_indices: &[(usize, Field)]) -> Result<(), DecodeError> {
+        let field_names = field_indices.iter().map(|(_, f)| f.name).collect();
+        self.sort_by_field_name_order(field_names)
     }
 
     pub fn sort_by_field_name_order(&mut self, field_names: Vec<&str>) -> Result<(), DecodeError> {
@@ -344,7 +351,7 @@ impl crate::Decoder for Decoder {
     ) -> Result<Vec<D>, Self::Error> {
         todo!()
     }
-
+ 
     fn decode_set_of<D: Decode + Ord>(
         &mut self,
         tag: Tag,
@@ -452,7 +459,34 @@ impl crate::Decoder for Decoder {
         D: Fn(&mut Self, usize, Tag) -> Result<FIELDS, Self::Error>,
         F: FnOnce(Vec<FIELDS>) -> Result<SET, Self::Error>,
     {
-        todo!()
+        tag!(StartElement, self)?;
+        let events = self
+            .stack
+            .pop()
+            .ok_or_else(|| error!(EndOfXmlInput))?
+            .events;
+        let mut field_indices = SET::FIELDS
+            .iter()
+            .enumerate()
+            .collect::<alloc::vec::Vec<_>>();
+        let mut fields = alloc::vec![];
+        field_indices
+            .sort_by(|(_, a), (_, b)| a.tag_tree.smallest_tag().cmp(&b.tag_tree.smallest_tag()));
+        let mut sequence_decoder = Decoder::try_from(events)?;
+        sequence_decoder.sort_by_field_tag_order(&field_indices)?;
+        for (index, field) in field_indices.into_iter() {
+            fields.push((decode_fn)(&mut sequence_decoder, index, field.tag)?);
+        }
+
+        for (index, field) in SET::EXTENDED_FIELDS
+            .iter()
+            .flat_map(|fields| fields.iter())
+            .enumerate()
+        {
+            fields.push((decode_fn)(&mut sequence_decoder, index + SET::FIELDS.len(), field.tag)?)
+        }
+
+        (field_fn)(fields)
     }
 
     fn decode_choice<D>(&mut self, constraints: Constraints) -> Result<D, Self::Error>
@@ -615,7 +649,6 @@ mod tests {
         grappa: BitString,
     }
 
-    use crate::Encode;
     #[derive(AsnType, Decode, Debug, PartialEq)]
     #[rasn(automatic_tags)]
     #[rasn(crate_root = "crate")]
@@ -653,6 +686,30 @@ mod tests {
                     grappa: bitvec::bitvec![u8, bitvec::prelude::Msb0; 1, 1, 1, 1]
                 },
                 sinmin: true
+            }
+        )
+    }
+
+    #[derive(AsnType, Debug, Decode, PartialEq)]
+    #[rasn(automatic_tags)]
+    #[rasn(crate_root = "crate")]
+    #[rasn(set)]
+    struct TestSetA {
+        wine: bool,
+        grappa: BitString,
+    }
+
+    #[test]
+    fn set() {
+        let mut decoder = Decoder::new(
+            "<TestTypeA><grappa>1010</grappa><wine><false/></wine></TestTypeA>".as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            TestSetA::decode(&mut decoder).unwrap(),
+            TestSetA {
+                wine: false,
+                grappa: bitvec::bitvec![u8, bitvec::prelude::Msb0; 1, 0, 1, 0]
             }
         )
     }
