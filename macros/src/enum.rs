@@ -111,23 +111,52 @@ impl Enum {
                 let variant = &config.variant.ident;
                 quote!((Self::#variant, #discriminant))
             });
-
-            let variants = variants.iter().map(|config| config.variant.ident.clone());
-            let extended_variant_idents = extended_variants.iter().map(|config| config.variant.ident.clone());
-            let extended_variants = extensible
-                .then(|| quote!(Some(&[#(Self::#extended_variant_idents,)*])))
-                .unwrap_or(quote!(None));
+            
+            
             let extended_discriminants = (!extended_variants.is_empty())
                 .then(|| quote!(Some(&[#(#extended_discriminants,)*])))
                 .unwrap_or(quote!(None));
 
-            quote! {
-                impl #impl_generics #crate_root::types::Enumerated for #name #ty_generics #where_clause {
-                    const VARIANTS: &'static [Self] = &[#(Self::#variants,)*];
-                    const EXTENDED_VARIANTS: Option<&'static [Self]> = #extended_variants;
+            #[cfg(not(feature = "xer"))]
+            {
+                let variants = variants.iter().map(|config| config.variant.ident.clone());
+                let extended_variant_idents = extended_variants.iter().map(|config| config.variant.ident.clone());
+                let extended_variants = extensible
+                    .then(|| quote!(Some(&[#(Self::#extended_variant_idents,)*])))
+                    .unwrap_or(quote!(None));
+                quote! {
+                    impl #impl_generics #crate_root::types::Enumerated for #name #ty_generics #where_clause {
+                        const VARIANTS: &'static [Self] = &[#(Self::#variants,)*];
+                        const EXTENDED_VARIANTS: Option<&'static [Self]> = #extended_variants;
 
-                    const DISCRIMINANTS: &'static [(Self, isize)] = &[#(#discriminants,)*];
-                    const EXTENDED_DISCRIMINANTS: Option<&'static [(Self, isize)]> = #extended_discriminants;
+                        const DISCRIMINANTS: &'static [(Self, isize)] = &[#(#discriminants,)*];
+                        const EXTENDED_DISCRIMINANTS: Option<&'static [(Self, isize)]> = #extended_discriminants;
+                    }
+                }
+            }
+            #[cfg(feature = "xer")]
+            {
+                let variants_with_identifiers = variants.iter().map(|config| {
+                    let identifier = &config.variant.ident;
+                    let asn_identifier = config.identifier.clone().unwrap_or(syn::LitStr::new(&config.variant.ident.to_string(), proc_macro2::Span::call_site()));
+                    quote!((#asn_identifier, Self::#identifier))
+                });
+                let extended_variant_idents = extended_variants.iter().map(|config| {
+                    let identifier = &config.variant.ident;
+                    let asn_identifier = config.identifier.clone().unwrap_or(syn::LitStr::new(&config.variant.ident.to_string(), proc_macro2::Span::call_site()));
+                    quote!((#asn_identifier, Self::#identifier))
+                });
+                let extended_variants = extensible
+                    .then(|| quote!(Some(&[#(#extended_variant_idents,)*])))
+                    .unwrap_or(quote!(None));
+                quote! {
+                    impl #impl_generics #crate_root::types::Enumerated for #name #ty_generics #where_clause {
+                        const VARIANTS: &'static [(&'static str, Self)] = &[#(#variants_with_identifiers,)*];
+                        const EXTENDED_VARIANTS: Option<&'static [(&'static str, Self)]> = #extended_variants;
+
+                        const DISCRIMINANTS: &'static [(Self, isize)] = &[#(#discriminants,)*];
+                        const EXTENDED_DISCRIMINANTS: Option<&'static [(Self, isize)]> = #extended_discriminants;
+                    }
                 }
             }
         });

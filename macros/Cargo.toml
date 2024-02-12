@@ -9,6 +9,10 @@ exclude = ["fuzzing"]
 keywords = ["asn1", "der", "ber", "cer", "per"]
 repository.workspace = true
 
+[features]
+default = []
+xer = []
+
 [lib]
 proc-macro = true
 

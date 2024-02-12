@@ -31,7 +31,7 @@ bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
 default = ["macros", "backtraces", "xer"]
 macros = ["rasn-derive"]
 backtraces = []
-xer = ["xml-rs"]
+xer = ["xml-rs", "rasn-derive/xer"]
 
 [[bench]]
 name = "criterion"

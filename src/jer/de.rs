@@ -275,7 +275,7 @@ impl crate::Decoder for Decoder {
             .as_object_mut()
             .ok_or_else(|| JerDecodeErrorKind::TypeMismatch {
                 needed: "object",
-                found: "unknown".to_string(),
+                found: alloc::format!("unknown"),
             })?;
         let mut field_indices = SET::FIELDS
             .iter()
@@ -412,8 +412,7 @@ impl Decoder {
             .try_into()
             .ok();
         Ok(discriminant
-            .map(|i| E::from_discriminant(i))
-            .flatten()
+            .and_then(E::from_discriminant)
             .ok_or_else(|| JerDecodeErrorKind::InvalidEnumDiscriminant {
                 discriminant: discriminant.unwrap_or(isize::MIN),
             })?)
@@ -432,7 +431,7 @@ impl Decoder {
     fn null_from_value(value: JsonValue) -> Result<(), DecodeError> {
         Ok(value
             .is_null()
-            .then(|| ())
+            .then_some(())
             .ok_or_else(|| JerDecodeErrorKind::TypeMismatch {
                 needed: "null",
                 found: alloc::format!("{value}"),
@@ -446,18 +445,17 @@ impl Decoder {
                 needed: "number array",
                 found: alloc::format!("{value}"),
             })?
-            .split(".")
-            .into_iter()
+            .split('.')
             .map(|arc| {
-                u32::from_str_radix(arc, 10).map_err(|_| JerDecodeErrorKind::TypeMismatch {
+                arc.parse::<u32>().map_err(|_| JerDecodeErrorKind::TypeMismatch {
                     needed: "OID arc number",
                     found: alloc::format!("{arc}"),
                 })
             })
             .collect::<Result<alloc::vec::Vec<u32>, _>>()
             .ok()
-            .and_then(|arcs| Oid::new(&arcs).map(|oid| ObjectIdentifier::from(oid)))
-            .ok_or_else(|| JerDecodeErrorKind::InvalidOIDString { value })?)
+            .and_then(|arcs| Oid::new(&arcs).map(ObjectIdentifier::from))
+            .ok_or(JerDecodeErrorKind::InvalidOIDString { value })?)
     }
 
     fn sequence_of_from_value<D: Decode>(

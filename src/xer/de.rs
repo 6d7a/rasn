@@ -301,7 +301,30 @@ impl crate::Decoder for Decoder {
     }
 
     fn decode_enumerated<E: Enumerated>(&mut self, _tag: Tag) -> Result<E, Self::Error> {
-        todo!()
+        tag!(StartElement, self)?;
+        let value = match self.next_element() {
+            Some(XmlEvent::StartElement { name, .. }) => {
+                if let Some((_, enumerated)) = [E::VARIANTS, E::EXTENDED_VARIANTS.unwrap_or(&[])]
+                    .into_iter()
+                    .flatten()
+                    .find(|(id, _)| id == &name.local_name.as_str()) 
+                {
+                    tag!(EndElement, self).map(|_| enumerated)
+                } else {
+                    Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                        needed: "enumerated value",
+                        found: format!("{name:?}"),
+                    }))
+                }
+            }
+            Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                needed: "enumerated value",
+                found: format!("{elem:?}"),
+            })),
+            None => Err(error!(EndOfXmlInput)),
+        };
+        tag!(EndElement, self)?;
+        value.copied()
     }
 
     fn decode_integer(
@@ -309,11 +332,32 @@ impl crate::Decoder for Decoder {
         _tag: Tag,
         _constraints: Constraints,
     ) -> Result<crate::types::Integer, Self::Error> {
-        todo!()
+        tag!(StartElement, self)?;
+        let value = match self.next_element() {
+            Some(XmlEvent::Characters(value)) => {
+                if let Ok(int) = value.parse::<i128>() {
+                    Ok(crate::types::Integer::from(int))
+                } else {
+                    Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                        needed: "integer value",
+                        found: value,
+                    }))
+                }
+            }
+            Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                needed: "integer value",
+                found: format!("{elem:?}"),
+            })),
+            None => Err(error!(EndOfXmlInput)),
+        };
+        tag!(EndElement, self)?;
+        value
     }
 
     fn decode_null(&mut self, tag: Tag) -> Result<(), Self::Error> {
-        todo!()
+        tag!(StartElement, self)?;
+        tag!(EndElement, self)?;
+        Ok(())
     }
 
     fn decode_object_identifier(
@@ -449,7 +493,7 @@ impl crate::Decoder for Decoder {
 
     fn decode_set<FIELDS, SET, D, F>(
         &mut self,
-        tag: Tag,
+        _tag: Tag,
         decode_fn: D,
         field_fn: F,
     ) -> Result<SET, Self::Error>
@@ -536,17 +580,6 @@ impl crate::Decoder for Decoder {
     }
 }
 
-fn parse_boolean_value(val: &str) -> Result<bool, DecodeError> {
-    match val {
-        v if v == "<true/>" => Ok(true),
-        v if v == "<false/>" => Ok(false),
-        _ => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
-            needed: "`true` or `false`",
-            found: format!("{val:?}"),
-        })),
-    }
-}
-
 fn parse_bitstring_value(val: &str) -> Result<BitString, DecodeError> {
     // TODO: Add support for X.680 §22.9 XMLIdentifierLists
     if !val
@@ -559,7 +592,7 @@ fn parse_bitstring_value(val: &str) -> Result<BitString, DecodeError> {
         ));
     }
     Ok(BitString::from_iter(val.chars().filter_map(|c| {
-        (c == '1').then(|| true).or((c == '0').then(|| false))
+        (c == '1').then_some(true).or((c == '0').then_some(false))
     })))
 }
 
@@ -711,6 +744,43 @@ mod tests {
                 wine: false,
                 grappa: bitvec::bitvec![u8, bitvec::prelude::Msb0; 1, 0, 1, 0]
             }
+        )
+    }
+
+    decode_test_2!(
+        positive_int,
+        decode_integer,
+        "<INTEGER>1283749501626451264</INTEGER>",
+        crate::types::Integer::from(1283749501626451264_i128)
+    );
+
+    decode_test_2!(
+        negative_int,
+        decode_integer,
+        "<INTEGER>-124142</INTEGER>",
+        crate::types::Integer::from(-124142)
+    );
+
+    #[derive(AsnType, Decode, Debug, PartialEq, Clone, Copy)]
+    #[rasn(enumerated)]
+    #[rasn(automatic_tags)]
+    #[rasn(crate_root = "crate")]
+    enum TestEnum {
+        #[rasn(identifier = "option-A")]
+        OptionA,
+        #[rasn(identifier = "option-B")]
+        OptionB,
+    }
+
+    #[test]
+    fn enumerated() {
+        let mut decoder = Decoder::new(
+            "<TestEnum><option-B/></TestEnum>".as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            TestEnum::decode(&mut decoder).unwrap(),
+            TestEnum::OptionB
         )
     }
 }

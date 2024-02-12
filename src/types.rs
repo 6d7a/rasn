@@ -90,9 +90,18 @@ pub trait DecodeChoice: Choice + crate::Decode {
 /// A `ENUMERATED` value.
 pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
     /// Variants contained in the "root component list".
+    #[cfg(not(feature = "xer"))]
     const VARIANTS: &'static [Self];
     /// Variants contained in the list of extensions.
+    #[cfg(not(feature = "xer"))]
     const EXTENDED_VARIANTS: Option<&'static [Self]>;
+
+    /// Variants contained in the "root component list" along with their ASN.1 identifier.
+    #[cfg(feature = "xer")]
+    const VARIANTS: &'static [(&'static str, Self)];
+    /// Variants contained in the list of extensions along with their ASN.1 identifier.
+    #[cfg(feature = "xer")]
+    const EXTENDED_VARIANTS: Option<&'static [(&'static str, Self)]>;
 
     /// Variants contained in the "root component list" mapped to their respective discriminant.
     const DISCRIMINANTS: &'static [(Self, isize)];
@@ -116,12 +125,19 @@ pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
     }
 
     /// Whether `self` is a variant contained in `Self::EXTENDED_VARIANTS`.
+    #[cfg(not(feature = "xer"))]
     fn is_extended_variant(&self) -> bool {
         Self::EXTENDED_VARIANTS.map_or(false, |array| array.iter().any(|variant| variant == self))
     }
 
+    #[cfg(feature = "xer")]
+    fn is_extended_variant(&self) -> bool {
+        Self::EXTENDED_VARIANTS.map_or(false, |array| array.iter().any(|(_, variant)| variant == self))
+    }
+
     /// Returns the enumeration for the variant, if it's an extended variant
     /// then it will return it's extended enumeration index.
+    #[cfg(not(feature = "xer"))]
     fn enumeration_index(&self) -> usize {
         if self.is_extended_variant() {
             Self::EXTENDED_VARIANTS
@@ -133,6 +149,22 @@ pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
             Self::VARIANTS
                 .iter()
                 .position(|lhs| lhs == self)
+                .expect("Variant not defined in Enumerated::VARIANTS")
+        }
+    }
+
+    #[cfg(feature = "xer")]
+    fn enumeration_index(&self) -> usize {
+        if self.is_extended_variant() {
+            Self::EXTENDED_VARIANTS
+                .unwrap()
+                .iter()
+                .position(|(_, lhs)| lhs == self)
+                .unwrap()
+        } else {
+            Self::VARIANTS
+                .iter()
+                .position(|(_, lhs)| lhs == self)
                 .expect("Variant not defined in Enumerated::VARIANTS")
         }
     }
@@ -163,13 +195,25 @@ pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
     }
 
     /// Returns a variant, if the index matches any "root" variant.
+    #[cfg(not(feature = "xer"))]
     fn from_enumeration_index(index: usize) -> Option<Self> {
         Self::VARIANTS.get(index).copied()
     }
 
+    #[cfg(feature = "xer")]
+    fn from_enumeration_index(index: usize) -> Option<Self> {
+        Self::VARIANTS.get(index).copied().map(|(_, v)| v)
+    }
+
     /// Returns a variant, if the index matches any "extended" variant.
+    #[cfg(not(feature = "xer"))]
     fn from_extended_enumeration_index(index: usize) -> Option<Self> {
         Self::EXTENDED_VARIANTS.and_then(|array| array.get(index).copied())
+    }
+
+    #[cfg(feature = "xer")]
+    fn from_extended_enumeration_index(index: usize) -> Option<Self> {
+        Self::EXTENDED_VARIANTS.and_then(|array| array.get(index).copied()).map(|(_, v)| v)
     }
 }
 
