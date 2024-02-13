@@ -1,3 +1,5 @@
+extern crate alloc;
+
 pub mod de;
 pub mod enc;
 
@@ -30,7 +32,7 @@ pub fn decode<'de, T: crate::Decode>(input: &'de [u8]) -> Result<T, crate::error
 /// Attempts to encode `value` to XER.
 /// # Errors
 /// Returns error specific to XER encoder if encoding is not possible.
-pub fn encode<T: crate::Encode>(value: &T) -> Result<Vec<u8>, crate::error::EncodeError> {
+pub fn encode<T: crate::Encode>(value: &T) -> Result<alloc::vec::Vec<u8>, crate::error::EncodeError> {
     let mut encoder = enc::Encoder::new();
     value.encode(&mut encoder)?;
     Ok(encoder.finish())
@@ -257,30 +259,30 @@ mod tests {
     // fn sequence_of() {
     //     round_trip_xer!(
     //         SequenceOf<SimpleChoice>,
-    //         alloc::vec![SimpleChoice::Test1(3)],
+    //         alloc::alloc::vec::Vec![SimpleChoice::Test1(3)],
     //         "[{\"Test1\":3}]"
     //     );
     //     round_trip_xer!(
     //         SequenceOf<u8>,
-    //         alloc::vec![1, 2, 3, 4, 5, 5, 3],
+    //         alloc::alloc::vec::Vec![1, 2, 3, 4, 5, 5, 3],
     //         "[1,2,3,4,5,5,3]"
     //     );
-    //     round_trip_xer!(SequenceOf<bool>, alloc::vec![], "[]");
+    //     round_trip_xer!(SequenceOf<bool>, alloc::alloc::vec::Vec![], "[]");
     // }
 
     // #[test]
     // fn set_of() {
     //     round_trip_xer!(
     //         SetOf<SimpleChoice>,
-    //         alloc::vec![SimpleChoice::Test1(3)].into_iter().collect(),
+    //         alloc::alloc::vec::Vec![SimpleChoice::Test1(3)].into_iter().collect(),
     //         "[{\"Test1\":3}]"
     //     );
     //     round_trip_xer!(
     //         SetOf<u8>,
-    //         alloc::vec![1, 2, 3, 4, 5].into_iter().collect(),
+    //         alloc::alloc::vec::Vec![1, 2, 3, 4, 5].into_iter().collect(),
     //         "[1,2,3,4,5]"
     //     );
-    //     round_trip_xer!(SetOf<bool>, alloc::vec![].into_iter().collect(), "[]");
+    //     round_trip_xer!(SetOf<bool>, alloc::alloc::vec::Vec![].into_iter().collect(), "[]");
     // }
 
     // #[test]

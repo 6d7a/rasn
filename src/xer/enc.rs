@@ -1,4 +1,5 @@
 //! # Encoding XER.
+extern crate alloc;
 
 use crate::{
     error::{EncodeError, XerEncodeErrorKind},
@@ -13,7 +14,7 @@ impl Encoder {
         }
     }
 
-    pub fn finish(self) -> Vec<u8> {
+    pub fn finish(self) -> alloc::vec::Vec<u8> {
         todo!()
     }
 }

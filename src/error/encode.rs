@@ -15,7 +15,6 @@ pub enum CodecEncodeError {
     Uper(UperEncodeErrorKind),
     Aper(AperEncodeErrorKind),
     Jer(JerEncodeErrorKind),
-    #[cfg(feature = "xer")]
     Xer(XerEncodeErrorKind),
 }
 macro_rules! impl_from {
@@ -35,7 +34,6 @@ impl_from!(Der, DerEncodeErrorKind);
 impl_from!(Uper, UperEncodeErrorKind);
 impl_from!(Aper, AperEncodeErrorKind);
 impl_from!(Jer, JerEncodeErrorKind);
-#[cfg(feature = "xer")]
 impl_from!(Xer, XerEncodeErrorKind);
 
 impl From<CodecEncodeError> for EncodeError {
@@ -177,7 +175,6 @@ impl EncodeError {
             CodecEncodeError::Uper(_) => crate::Codec::Uper,
             CodecEncodeError::Aper(_) => crate::Codec::Aper,
             CodecEncodeError::Jer(_) => crate::Codec::Jer,
-            #[cfg(feature = "xer")]
             CodecEncodeError::Xer(_) => crate::Codec::Xer,
         };
         Self {

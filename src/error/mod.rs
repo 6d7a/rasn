@@ -16,13 +16,8 @@ pub mod strings {
 }
 
 pub use decode::DecodeErrorKind;
-#[cfg(feature = "xer")]
 pub use decode::{
     BerDecodeErrorKind, CodecDecodeError, DecodeError, DerDecodeErrorKind, JerDecodeErrorKind, XerDecodeErrorKind
-};
-#[cfg(not(feature = "xer"))]
-pub use decode::{
-    BerDecodeErrorKind, CodecDecodeError, DecodeError, DerDecodeErrorKind, JerDecodeErrorKind
 };
 pub use encode::EncodeErrorKind;
 pub use encode::{BerEncodeErrorKind, CodecEncodeError, EncodeError, JerEncodeErrorKind, XerEncodeErrorKind};

@@ -17,7 +17,6 @@ pub enum Codec {
     Uper,
     /// [JSON Encoding Rules](https://obj-sys.com/docs/JSONEncodingRules.pdf)
     Jer,
-    #[cfg(feature = "xer")]
     /// X.693 — XML Encoding Rules (Unaligned)
     Xer,
 }
@@ -31,7 +30,6 @@ impl core::fmt::Display for Codec {
             Self::Der => write!(f, "DER"),
             Self::Uper => write!(f, "UPER"),
             Self::Jer => write!(f, "JER"),
-            #[cfg(feature = "xer")]
             Self::Xer => write!(f, "XER"),
         }
     }
@@ -54,7 +52,6 @@ impl Codec {
             Self::Der => crate::der::encode(value),
             Self::Uper => crate::uper::encode(value),
             Self::Jer => crate::jer::encode(value).map(alloc::string::String::into_bytes),
-            #[cfg(feature = "xer")]
             Self::Xer => crate::xer::encode(value),
         }
     }
@@ -85,7 +82,6 @@ impl Codec {
                 },
                 |s| crate::jer::decode(&s),
             ),
-            #[cfg(feature = "xer")]
             Self::Xer => crate::xer::decode(input),
         }
     }

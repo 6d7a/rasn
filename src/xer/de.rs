@@ -1,9 +1,7 @@
 //! # Decoding XER
+extern crate alloc;
 
-use std::{collections::BTreeMap, io::BufReader};
-
-use alloc::collections::VecDeque;
-use xml::{common::XmlVersion, reader::XmlEvent, ParserConfig};
+use xml_no_std::{common::XmlVersion, reader::XmlEvent, ParserConfig};
 
 use crate::{
     error::*,
@@ -21,7 +19,7 @@ const OPTIONAL_ITEM_NOT_PRESENT: &str = "§_NOT_PRESENT_§";
 macro_rules! error {
     ($kind:ident, $($arg:tt)*) => {
         DecodeError::from(XerDecodeErrorKind::$kind {
-            details: format!($($arg)*)
+            details: alloc::format!($($arg)*)
         })
     };
     ($kind:ident) => {
@@ -38,13 +36,13 @@ macro_rules! tag {
                 } else {
                     Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                         needed: $tag,
-                        found: format!("{name:?}"),
+                        found: alloc::format!("{name:?}"),
                     }))
                 }
             }
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                 needed: $tag,
-                found: format!("{elem:?}"),
+                found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
         }
@@ -54,7 +52,7 @@ macro_rules! tag {
             Some(XmlEvent::$event { .. }) => Ok(()),
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                 needed: "StartElement or EndElement",
-                found: format!("{elem:?}"),
+                found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
         }
@@ -67,7 +65,7 @@ macro_rules! value {
             Some(XmlEvent::Characters(s)) => $parser(&s),
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                 needed: $expected,
-                found: format!("{elem:?}"),
+                found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
         }
@@ -82,7 +80,7 @@ macro_rules! value_or_empty {
             Some(elem) => {
                 return Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                     needed: $expected,
-                    found: format!("{elem:?}"),
+                    found: alloc::format!("{elem:?}"),
                 }))
             }
             _ => return Err(DecodeError::from(XerDecodeErrorKind::EndOfXmlInput {})),
@@ -94,7 +92,7 @@ macro_rules! value_or_empty {
 
 #[derive(Debug)]
 struct XerElement {
-    events: VecDeque<XmlEvent>,
+    events: alloc::collections::VecDeque<XmlEvent>,
 }
 
 impl XerElement {
@@ -108,15 +106,15 @@ impl XerElement {
 }
 
 pub struct Decoder {
-    stack: Vec<XerElement>,
+    stack: alloc::vec::Vec<XerElement>,
 }
 
 impl Decoder {
     pub fn new(input: &[u8]) -> Result<Self, <Decoder as crate::de::Decoder>::Error> {
-        let mut reader = ParserConfig::default().create_reader(BufReader::new(input));
+        let mut reader = ParserConfig::default().create_reader(input.into_iter());
         let next = reader.next().map_err(|e| error!(XmlParser, "{e:?}"))?;
         check_prolog(&next)?;
-        let mut elements = VecDeque::new();
+        let mut elements = alloc::collections::VecDeque::new();
         'read_xml: loop {
             let next = reader.next().map_err(|e| error!(XmlParser, "{e:?}"))?;
             if next == XmlEvent::EndDocument {
@@ -149,12 +147,12 @@ impl Decoder {
         self.sort_by_field_name_order(field_names)
     }
 
-    pub fn sort_by_field_name_order(&mut self, field_names: Vec<&str>) -> Result<(), DecodeError> {
-        let stack = std::mem::take(&mut self.stack);
+    pub fn sort_by_field_name_order(&mut self, field_names: alloc::vec::Vec<&str>) -> Result<(), DecodeError> {
+        let stack = core::mem::take(&mut self.stack);
         let mut reordered =
             stack
                 .into_iter()
-                .try_fold(BTreeMap::<usize, XerElement>::new(), |mut acc, elem| {
+                .try_fold(alloc::collections::BTreeMap::<usize, XerElement>::new(), |mut acc, elem| {
                     let index = match elem.peek() {
                         Some(XmlEvent::StartElement { name, .. }) => field_names
                             .iter()
@@ -176,17 +174,17 @@ impl Decoder {
                 })?;
         for i in (0..field_names.len()).rev() {
             self.stack.push(reordered.remove(&i).unwrap_or(XerElement {
-                events: vec![XmlEvent::Characters(OPTIONAL_ITEM_NOT_PRESENT.into())].into(),
+                events: alloc::vec![XmlEvent::Characters(OPTIONAL_ITEM_NOT_PRESENT.into())].into(),
             }))
         }
         Ok(())
     }
 }
 
-impl TryFrom<VecDeque<XmlEvent>> for Decoder {
+impl TryFrom<alloc::collections::VecDeque<XmlEvent>> for Decoder {
     type Error = DecodeError;
-    fn try_from(value: VecDeque<XmlEvent>) -> Result<Self, Self::Error> {
-        let (mut stack, mut events, mut tag) = (vec![], VecDeque::new(), None);
+    fn try_from(value: alloc::collections::VecDeque<XmlEvent>) -> Result<Self, Self::Error> {
+        let (mut stack, mut events, mut tag) = (alloc::vec![], alloc::collections::VecDeque::new(), None);
         'xml_elements: for evt in value {
             match (&tag, evt) {
                 (_, XmlEvent::Whitespace(_)) => continue 'xml_elements,
@@ -211,7 +209,7 @@ impl TryFrom<VecDeque<XmlEvent>> for Decoder {
                 (Some(t), XmlEvent::EndElement { name }) => {
                     if &name == t {
                         events.push_back(XmlEvent::EndElement { name });
-                        let collected_events: VecDeque<XmlEvent> = std::mem::take(&mut events);
+                        let collected_events: alloc::collections::VecDeque<XmlEvent> = core::mem::take(&mut events);
                         stack.push(XerElement {
                             events: collected_events,
                         });
@@ -233,7 +231,7 @@ fn check_prolog(prolog: &XmlEvent) -> Result<(), DecodeError> {
         version, encoding, ..
     } = prolog
     {
-        if version != &XmlVersion::Version10 || encoding != &String::from("UTF-8") {
+        if version != &XmlVersion::Version10 || encoding != &alloc::string::String::from("UTF-8") {
             Err(error!(
                 SpecViolation,
                 r#"§8.2 The XML prolog shall either be empty; or shall consist of [...] <?xml
@@ -286,13 +284,13 @@ impl crate::Decoder for Decoder {
                 } else {
                     Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                         needed: "`<true/>` or `<false/>`",
-                        found: format!("{name:?}"),
+                        found: alloc::format!("{name:?}"),
                     }))
                 }
             }
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                 needed: BOOLEAN_TYPE_TAG,
-                found: format!("{elem:?}"),
+                found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
         };
@@ -313,13 +311,13 @@ impl crate::Decoder for Decoder {
                 } else {
                     Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                         needed: "enumerated value",
-                        found: format!("{name:?}"),
+                        found: alloc::format!("{name:?}"),
                     }))
                 }
             }
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                 needed: "enumerated value",
-                found: format!("{elem:?}"),
+                found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
         };
@@ -346,7 +344,7 @@ impl crate::Decoder for Decoder {
             }
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
                 needed: "integer value",
-                found: format!("{elem:?}"),
+                found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
         };
@@ -392,7 +390,7 @@ impl crate::Decoder for Decoder {
         &mut self,
         tag: Tag,
         constraints: Constraints,
-    ) -> Result<Vec<D>, Self::Error> {
+    ) -> Result<alloc::vec::Vec<D>, Self::Error> {
         todo!()
     }
  
@@ -408,7 +406,7 @@ impl crate::Decoder for Decoder {
         &mut self,
         tag: Tag,
         constraints: Constraints,
-    ) -> Result<Vec<u8>, Self::Error> {
+    ) -> Result<alloc::vec::Vec<u8>, Self::Error> {
         todo!()
     }
 
@@ -501,7 +499,7 @@ impl crate::Decoder for Decoder {
         SET: Decode + crate::types::Constructed,
         FIELDS: Decode,
         D: Fn(&mut Self, usize, Tag) -> Result<FIELDS, Self::Error>,
-        F: FnOnce(Vec<FIELDS>) -> Result<SET, Self::Error>,
+        F: FnOnce(alloc::vec::Vec<FIELDS>) -> Result<SET, Self::Error>,
     {
         tag!(StartElement, self)?;
         let events = self
