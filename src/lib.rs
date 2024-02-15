@@ -49,9 +49,9 @@ pub mod cer;
 pub mod der;
 pub mod error;
 pub mod jer;
-pub mod xer;
 mod num;
 pub mod uper;
+pub mod xer;
 
 #[doc(inline)]
 pub use self::{

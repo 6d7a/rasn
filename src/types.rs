@@ -115,9 +115,10 @@ pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
         Self::variance() + Self::extended_variance()
     }
 
-
     fn is_extended_variant(&self) -> bool {
-        Self::EXTENDED_VARIANTS.map_or(false, |array| array.iter().any(|(_, variant)| variant == self))
+        Self::EXTENDED_VARIANTS.map_or(false, |array| {
+            array.iter().any(|(_, variant)| variant == self)
+        })
     }
 
     /// Returns the enumeration for the variant, if it's an extended variant
@@ -169,7 +170,9 @@ pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
 
     /// Returns a variant, if the index matches any "extended" variant.
     fn from_extended_enumeration_index(index: usize) -> Option<Self> {
-        Self::EXTENDED_VARIANTS.and_then(|array| array.get(index).copied()).map(|(_, v)| v)
+        Self::EXTENDED_VARIANTS
+            .and_then(|array| array.get(index).copied())
+            .map(|(_, v)| v)
     }
 }
 

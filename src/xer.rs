@@ -32,7 +32,9 @@ pub fn decode<'de, T: crate::Decode>(input: &'de [u8]) -> Result<T, crate::error
 /// Attempts to encode `value` to XER.
 /// # Errors
 /// Returns error specific to XER encoder if encoding is not possible.
-pub fn encode<T: crate::Encode>(value: &T) -> Result<alloc::vec::Vec<u8>, crate::error::EncodeError> {
+pub fn encode<T: crate::Encode>(
+    value: &T,
+) -> Result<alloc::vec::Vec<u8>, crate::error::EncodeError> {
     let mut encoder = enc::Encoder::new();
     value.encode(&mut encoder)?;
     Ok(encoder.finish())

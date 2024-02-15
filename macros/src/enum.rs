@@ -111,8 +111,8 @@ impl Enum {
                 let variant = &config.variant.ident;
                 quote!((Self::#variant, #discriminant))
             });
-            
-            
+
+
             let extended_discriminants = (!extended_variants.is_empty())
                 .then(|| quote!(Some(&[#(#extended_discriminants,)*])))
                 .unwrap_or(quote!(None));
@@ -134,7 +134,7 @@ impl Enum {
                 impl #impl_generics #crate_root::types::Enumerated for #name #ty_generics #where_clause {
                     const VARIANTS: &'static [(&'static str, Self)] = &[#(#variants_with_identifiers,)*];
                     const EXTENDED_VARIANTS: Option<&'static [(&'static str, Self)]> = #extended_variants;
-                    
+
                     const DISCRIMINANTS: &'static [(Self, isize)] = &[#(#discriminants,)*];
                     const EXTENDED_DISCRIMINANTS: Option<&'static [(Self, isize)]> = #extended_discriminants;
                 }

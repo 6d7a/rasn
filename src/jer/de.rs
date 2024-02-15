@@ -411,11 +411,11 @@ impl Decoder {
             })?
             .try_into()
             .ok();
-        Ok(discriminant
-            .and_then(E::from_discriminant)
-            .ok_or_else(|| JerDecodeErrorKind::InvalidEnumDiscriminant {
+        Ok(discriminant.and_then(E::from_discriminant).ok_or_else(|| {
+            JerDecodeErrorKind::InvalidEnumDiscriminant {
                 discriminant: discriminant.unwrap_or(isize::MIN),
-            })?)
+            }
+        })?)
     }
 
     fn integer_from_value(value: JsonValue) -> Result<Integer, DecodeError> {
@@ -447,10 +447,11 @@ impl Decoder {
             })?
             .split('.')
             .map(|arc| {
-                arc.parse::<u32>().map_err(|_| JerDecodeErrorKind::TypeMismatch {
-                    needed: "OID arc number",
-                    found: alloc::format!("{arc}"),
-                })
+                arc.parse::<u32>()
+                    .map_err(|_| JerDecodeErrorKind::TypeMismatch {
+                        needed: "OID arc number",
+                        found: alloc::format!("{arc}"),
+                    })
             })
             .collect::<Result<alloc::vec::Vec<u32>, _>>()
             .ok()

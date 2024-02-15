@@ -306,7 +306,7 @@ impl DecodeError {
             CodecDecodeError::Uper(_) => crate::Codec::Uper,
             CodecDecodeError::Aper(_) => crate::Codec::Aper,
             CodecDecodeError::Jer(_) => crate::Codec::Jer,
-            CodecDecodeError:: Xer(_) => crate::Codec:: Xer,
+            CodecDecodeError::Xer(_) => crate::Codec::Xer,
         };
         Self {
             kind: Box::new(DecodeErrorKind::CodecSpecific { inner }),

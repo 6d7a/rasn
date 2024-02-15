@@ -59,16 +59,24 @@ macro_rules! tag {
     };
 }
 
-macro_rules! value {
-    ($this:ident, $parser:ident, $expected:expr) => {{
-        match $this.next_element() {
-            Some(XmlEvent::Characters(s)) => $parser(&s),
+macro_rules! decode_string {
+    ($this:ident, $tryfrom:path, $tag:path, $needed:literal) => {{
+        let value = match $this.next_element() {
+            Some(XmlEvent::Characters(value)) => $tryfrom(value).map_err(|e| {
+                DecodeError::string_conversion_failed(
+                    $tag,
+                    alloc::format!("Error transforming string: {e:?}"),
+                    crate::Codec::Xer,
+                )
+            }),
             Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
-                needed: $expected,
+                needed: $needed,
                 found: alloc::format!("{elem:?}"),
             })),
             None => Err(error!(EndOfXmlInput)),
-        }
+        };
+        tag!(EndElement, $this)?;
+        value
     }};
 }
 
@@ -142,36 +150,42 @@ impl Decoder {
         self.stack.last().and_then(XerElement::peek)
     }
 
-    pub fn sort_by_field_tag_order(&mut self, field_indices: &[(usize, Field)]) -> Result<(), DecodeError> {
+    pub fn sort_by_field_tag_order(
+        &mut self,
+        field_indices: &[(usize, Field)],
+    ) -> Result<(), DecodeError> {
         let field_names = field_indices.iter().map(|(_, f)| f.name).collect();
         self.sort_by_field_name_order(field_names)
     }
 
-    pub fn sort_by_field_name_order(&mut self, field_names: alloc::vec::Vec<&str>) -> Result<(), DecodeError> {
+    pub fn sort_by_field_name_order(
+        &mut self,
+        field_names: alloc::vec::Vec<&str>,
+    ) -> Result<(), DecodeError> {
         let stack = core::mem::take(&mut self.stack);
-        let mut reordered =
-            stack
-                .into_iter()
-                .try_fold(alloc::collections::BTreeMap::<usize, XerElement>::new(), |mut acc, elem| {
-                    let index = match elem.peek() {
-                        Some(XmlEvent::StartElement { name, .. }) => field_names
-                            .iter()
-                            .enumerate()
-                            .find_map(|(i, f)| (*f == name.local_name.as_str()).then_some(i))
-                            .ok_or_else(|| {
-                                XerDecodeErrorKind::XmlTag {
-                                    needed: name.local_name.clone(),
-                                    found: "nothing".into(),
-                                }
-                                .into()
-                            }),
-                        e => Err(error!(XmlParser, "Expected opening tag, found {e:?}")),
-                    };
-                    index.map(|i| {
-                        acc.insert(i, elem);
-                        acc
-                    })
-                })?;
+        let mut reordered = stack.into_iter().try_fold(
+            alloc::collections::BTreeMap::<usize, XerElement>::new(),
+            |mut acc, elem| {
+                let index = match elem.peek() {
+                    Some(XmlEvent::StartElement { name, .. }) => field_names
+                        .iter()
+                        .enumerate()
+                        .find_map(|(i, f)| (*f == name.local_name.as_str()).then_some(i))
+                        .ok_or_else(|| {
+                            XerDecodeErrorKind::XmlTag {
+                                needed: name.local_name.clone(),
+                                found: "nothing".into(),
+                            }
+                            .into()
+                        }),
+                    e => Err(error!(XmlParser, "Expected opening tag, found {e:?}")),
+                };
+                index.map(|i| {
+                    acc.insert(i, elem);
+                    acc
+                })
+            },
+        )?;
         for i in (0..field_names.len()).rev() {
             self.stack.push(reordered.remove(&i).unwrap_or(XerElement {
                 events: alloc::vec![XmlEvent::Characters(OPTIONAL_ITEM_NOT_PRESENT.into())].into(),
@@ -184,7 +198,8 @@ impl Decoder {
 impl TryFrom<alloc::collections::VecDeque<XmlEvent>> for Decoder {
     type Error = DecodeError;
     fn try_from(value: alloc::collections::VecDeque<XmlEvent>) -> Result<Self, Self::Error> {
-        let (mut stack, mut events, mut tag) = (alloc::vec![], alloc::collections::VecDeque::new(), None);
+        let (mut stack, mut events, mut tag) =
+            (alloc::vec![], alloc::collections::VecDeque::new(), None);
         'xml_elements: for evt in value {
             match (&tag, evt) {
                 (_, XmlEvent::Whitespace(_)) => continue 'xml_elements,
@@ -209,7 +224,8 @@ impl TryFrom<alloc::collections::VecDeque<XmlEvent>> for Decoder {
                 (Some(t), XmlEvent::EndElement { name }) => {
                     if &name == t {
                         events.push_back(XmlEvent::EndElement { name });
-                        let collected_events: alloc::collections::VecDeque<XmlEvent> = core::mem::take(&mut events);
+                        let collected_events: alloc::collections::VecDeque<XmlEvent> =
+                            core::mem::take(&mut events);
                         stack.push(XerElement {
                             events: collected_events,
                         });
@@ -259,8 +275,8 @@ impl crate::Decoder for Decoder {
 
     fn decode_bit_string(
         &mut self,
-        _tag: Tag,
-        _constraints: Constraints,
+        __tag: Tag,
+        __constraints: Constraints,
     ) -> Result<crate::types::BitString, Self::Error> {
         tag!(StartElement, self)?;
         let value = value_or_empty!(
@@ -273,7 +289,7 @@ impl crate::Decoder for Decoder {
         value
     }
 
-    fn decode_bool(&mut self, _tag: Tag) -> Result<bool, Self::Error> {
+    fn decode_bool(&mut self, __tag: Tag) -> Result<bool, Self::Error> {
         tag!(StartElement, self)?;
         let value = match self.next_element() {
             Some(XmlEvent::StartElement { name, .. }) => {
@@ -298,14 +314,14 @@ impl crate::Decoder for Decoder {
         value
     }
 
-    fn decode_enumerated<E: Enumerated>(&mut self, _tag: Tag) -> Result<E, Self::Error> {
+    fn decode_enumerated<E: Enumerated>(&mut self, __tag: Tag) -> Result<E, Self::Error> {
         tag!(StartElement, self)?;
         let value = match self.next_element() {
             Some(XmlEvent::StartElement { name, .. }) => {
                 if let Some((_, enumerated)) = [E::VARIANTS, E::EXTENDED_VARIANTS.unwrap_or(&[])]
                     .into_iter()
                     .flatten()
-                    .find(|(id, _)| id == &name.local_name.as_str()) 
+                    .find(|(id, _)| id == &name.local_name.as_str())
                 {
                     tag!(EndElement, self).map(|_| enumerated)
                 } else {
@@ -327,8 +343,8 @@ impl crate::Decoder for Decoder {
 
     fn decode_integer(
         &mut self,
-        _tag: Tag,
-        _constraints: Constraints,
+        __tag: Tag,
+        __constraints: Constraints,
     ) -> Result<crate::types::Integer, Self::Error> {
         tag!(StartElement, self)?;
         let value = match self.next_element() {
@@ -352,7 +368,7 @@ impl crate::Decoder for Decoder {
         value
     }
 
-    fn decode_null(&mut self, tag: Tag) -> Result<(), Self::Error> {
+    fn decode_null(&mut self, _tag: Tag) -> Result<(), Self::Error> {
         tag!(StartElement, self)?;
         tag!(EndElement, self)?;
         Ok(())
@@ -360,12 +376,12 @@ impl crate::Decoder for Decoder {
 
     fn decode_object_identifier(
         &mut self,
-        tag: Tag,
+        _tag: Tag,
     ) -> Result<crate::types::ObjectIdentifier, Self::Error> {
         todo!()
     }
 
-    fn decode_sequence<D, F>(&mut self, _tag: Tag, decode_fn: F) -> Result<D, Self::Error>
+    fn decode_sequence<D, F>(&mut self, __tag: Tag, decode_fn: F) -> Result<D, Self::Error>
     where
         D: crate::types::Constructed,
         F: FnOnce(&mut Self) -> Result<D, Self::Error>,
@@ -388,110 +404,151 @@ impl crate::Decoder for Decoder {
 
     fn decode_sequence_of<D: Decode>(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<alloc::vec::Vec<D>, Self::Error> {
-        todo!()
+        decode_sequence_or_set_items(self)
     }
- 
+
     fn decode_set_of<D: Decode + Ord>(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::SetOf<D>, Self::Error> {
-        todo!()
+        let items = decode_sequence_or_set_items(self)?;
+        Ok(items.into_iter().collect())
     }
 
     fn decode_octet_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<alloc::vec::Vec<u8>, Self::Error> {
         todo!()
     }
 
     fn decode_utf8_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::Utf8String, Self::Error> {
-        todo!()
+        tag!(StartElement, self)?;
+        let value = match self.next_element() {
+            Some(XmlEvent::Characters(value)) => Ok(value),
+            Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                needed: "UTF8 string value",
+                found: alloc::format!("{elem:?}"),
+            })),
+            None => Err(error!(EndOfXmlInput)),
+        };
+        tag!(EndElement, self)?;
+        value
     }
 
     fn decode_visible_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::VisibleString, Self::Error> {
-        todo!()
+        decode_string!(
+            self,
+            crate::types::VisibleString::try_from,
+            Tag::VISIBLE_STRING,
+            "VisibleString value"
+        )
     }
 
     fn decode_general_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::GeneralString, Self::Error> {
-        todo!()
+        decode_string!(
+            self,
+            crate::types::GeneralString::try_from,
+            Tag::GENERAL_STRING,
+            "GeneralString value"
+        )
     }
 
     fn decode_ia5_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::Ia5String, Self::Error> {
-        todo!()
+        decode_string!(
+            self,
+            crate::types::Ia5String::try_from,
+            Tag::IA5_STRING,
+            "IA5String value"
+        )
     }
 
     fn decode_printable_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::PrintableString, Self::Error> {
-        todo!()
+        decode_string!(
+            self,
+            crate::types::PrintableString::try_from,
+            Tag::PRINTABLE_STRING,
+            "PrintableString value"
+        )
     }
 
     fn decode_numeric_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::NumericString, Self::Error> {
-        todo!()
+        decode_string!(
+            self,
+            crate::types::NumericString::try_from,
+            Tag::NUMERIC_STRING,
+            "NumericString value"
+        )
     }
 
     fn decode_teletex_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::TeletexString, Self::Error> {
         todo!()
     }
 
     fn decode_bmp_string(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<crate::types::BmpString, Self::Error> {
-        todo!()
+        decode_string!(
+            self,
+            crate::types::BmpString::try_from,
+            Tag::BMP_STRING,
+            "BMP String value"
+        )
     }
 
-    fn decode_explicit_prefix<D: Decode>(&mut self, tag: Tag) -> Result<D, Self::Error> {
-        todo!()
+    fn decode_explicit_prefix<D: Decode>(&mut self, _tag: Tag) -> Result<D, Self::Error> {
+        D::decode(self)
     }
 
-    fn decode_utc_time(&mut self, tag: Tag) -> Result<crate::types::UtcTime, Self::Error> {
+    fn decode_utc_time(&mut self, _tag: Tag) -> Result<crate::types::UtcTime, Self::Error> {
         todo!()
     }
 
     fn decode_generalized_time(
         &mut self,
-        tag: Tag,
+        _tag: Tag,
     ) -> Result<crate::types::GeneralizedTime, Self::Error> {
         todo!()
     }
 
     fn decode_set<FIELDS, SET, D, F>(
         &mut self,
-        _tag: Tag,
+        __tag: Tag,
         decode_fn: D,
         field_fn: F,
     ) -> Result<SET, Self::Error>
@@ -525,13 +582,17 @@ impl crate::Decoder for Decoder {
             .flat_map(|fields| fields.iter())
             .enumerate()
         {
-            fields.push((decode_fn)(&mut sequence_decoder, index + SET::FIELDS.len(), field.tag)?)
+            fields.push((decode_fn)(
+                &mut sequence_decoder,
+                index + SET::FIELDS.len(),
+                field.tag,
+            )?)
         }
 
         (field_fn)(fields)
     }
 
-    fn decode_choice<D>(&mut self, constraints: Constraints) -> Result<D, Self::Error>
+    fn decode_choice<D>(&mut self, _constraints: Constraints) -> Result<D, Self::Error>
     where
         D: crate::types::DecodeChoice,
     {
@@ -542,28 +603,28 @@ impl crate::Decoder for Decoder {
         todo!()
     }
 
-    fn decode_optional_with_tag<D: Decode>(&mut self, tag: Tag) -> Result<Option<D>, Self::Error> {
+    fn decode_optional_with_tag<D: Decode>(&mut self, _tag: Tag) -> Result<Option<D>, Self::Error> {
         todo!()
     }
 
     fn decode_optional_with_constraints<D: Decode>(
         &mut self,
-        constraints: Constraints,
+        _constraints: Constraints,
     ) -> Result<Option<D>, Self::Error> {
         todo!()
     }
 
     fn decode_optional_with_tag_and_constraints<D: Decode>(
         &mut self,
-        tag: Tag,
-        constraints: Constraints,
+        _tag: Tag,
+        _constraints: Constraints,
     ) -> Result<Option<D>, Self::Error> {
         todo!()
     }
 
     fn decode_extension_addition_with_constraints<D>(
         &mut self,
-        constraints: Constraints,
+        _constraints: Constraints,
     ) -> Result<Option<D>, Self::Error>
     where
         D: Decode,
@@ -592,6 +653,33 @@ fn parse_bitstring_value(val: &str) -> Result<BitString, DecodeError> {
     Ok(BitString::from_iter(val.chars().filter_map(|c| {
         (c == '1').then_some(true).or((c == '0').then_some(false))
     })))
+}
+
+fn decode_sequence_or_set_items<D: Decode>(
+    decoder: &mut Decoder,
+) -> Result<alloc::vec::Vec<D>, DecodeError> {
+    let _identifier = match decoder.next_element() {
+        Some(XmlEvent::StartElement { name, .. }) => Ok(name),
+        elem => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+            needed: "StartElement of SEQUENCE OF",
+            found: alloc::format!("{elem:?}"),
+        })),
+    }?;
+
+    let mut inner_decoder: Decoder = decoder
+        .stack
+        .pop()
+        .ok_or_else(|| error!(EndOfXmlInput))?
+        .events
+        .try_into()?;
+
+    let mut items = alloc::vec::Vec::new();
+    while inner_decoder.peek().is_some() {
+        items.push(D::decode(&mut inner_decoder)?);
+    }
+    items.reverse();
+
+    Ok(items)
 }
 
 #[cfg(test)]
@@ -687,7 +775,7 @@ mod tests {
         sinmin: bool,
         nested: TestTypeA,
     }
-    
+
     #[test]
     fn sequence() {
         let mut decoder = Decoder::new(
@@ -772,13 +860,122 @@ mod tests {
 
     #[test]
     fn enumerated() {
+        let mut decoder = Decoder::new("<TestEnum><option-B/></TestEnum>".as_bytes()).unwrap();
+        assert_eq!(TestEnum::decode(&mut decoder).unwrap(), TestEnum::OptionB)
+    }
+
+    #[derive(AsnType, Debug, Decode, PartialEq)]
+    #[rasn(automatic_tags)]
+    #[rasn(delegate)]
+    #[rasn(crate_root = "crate")]
+    struct SeqOfType(SequenceOf<Integer>);
+
+    #[test]
+    fn sequence_of() {
         let mut decoder = Decoder::new(
-            "<TestEnum><option-B/></TestEnum>".as_bytes(),
+            r#"<SeqOfType>
+            <INTEGER>-1</INTEGER>
+            <INTEGER>-5</INTEGER>
+            <INTEGER>0</INTEGER>
+            <INTEGER>55</INTEGER>
+            <INTEGER>212424214</INTEGER>
+          </SeqOfType>"#
+                .as_bytes(),
         )
         .unwrap();
         assert_eq!(
-            TestEnum::decode(&mut decoder).unwrap(),
-            TestEnum::OptionB
+            SeqOfType::decode(&mut decoder).unwrap(),
+            SeqOfType(vec![
+                Integer::from(-1),
+                Integer::from(-5),
+                Integer::from(0),
+                Integer::from(55),
+                Integer::from(212424214)
+            ])
+        )
+    }
+
+    #[derive(AsnType, Debug, Decode, PartialEq)]
+    #[rasn(automatic_tags)]
+    #[rasn(delegate)]
+    #[rasn(crate_root = "crate")]
+    struct NestedSeqOf(SequenceOf<SeqOfType>);
+
+    #[test]
+    fn nested_sequence_of() {
+        let mut decoder = Decoder::new(
+            r#"<NestedSeqOf>
+                <SeqOfType>
+                    <INTEGER>-1</INTEGER>
+                    <INTEGER>-5</INTEGER>
+                    <INTEGER>0</INTEGER>
+                    <INTEGER>55</INTEGER>
+                    <INTEGER>212424214</INTEGER>
+                </SeqOfType>
+                <SeqOfType>
+                    <INTEGER>1</INTEGER>
+                    <INTEGER>5</INTEGER>
+                    <INTEGER>0</INTEGER>
+                    <INTEGER>55</INTEGER>
+                    <INTEGER>212424214</INTEGER>
+                </SeqOfType>
+            </NestedSeqOf>"#
+                .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            NestedSeqOf::decode(&mut decoder).unwrap(),
+            NestedSeqOf(vec![
+                SeqOfType(vec![
+                    Integer::from(-1),
+                    Integer::from(-5),
+                    Integer::from(0),
+                    Integer::from(55),
+                    Integer::from(212424214)
+                ]),
+                SeqOfType(vec![
+                    Integer::from(1),
+                    Integer::from(5),
+                    Integer::from(0),
+                    Integer::from(55),
+                    Integer::from(212424214)
+                ])
+            ])
+        )
+    }
+
+    #[derive(AsnType, Debug, Decode, PartialEq)]
+    #[rasn(automatic_tags)]
+    #[rasn(delegate)]
+    #[rasn(crate_root = "crate")]
+    struct SetOfType(crate::types::SetOf<Integer>);
+
+    #[test]
+    fn set_of() {
+        let mut decoder = Decoder::new(
+            r#"<SeqOfType>
+            <INTEGER>-1</INTEGER>
+            <INTEGER>-5</INTEGER>
+            <INTEGER>0</INTEGER>
+            <INTEGER>55</INTEGER>
+            <INTEGER>212424214</INTEGER>
+          </SeqOfType>"#
+                .as_bytes(),
+        )
+        .unwrap();
+        let expected: crate::types::SetOf<Integer> = [
+            Integer::from(-1),
+            Integer::from(-5),
+            Integer::from(0),
+            Integer::from(55),
+            Integer::from(212424214),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            SetOfType::decode(&mut decoder).unwrap(),
+            SetOfType(expected)
         )
     }
 }
