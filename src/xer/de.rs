@@ -80,6 +80,22 @@ macro_rules! decode_string {
     }};
 }
 
+macro_rules! decode_time {
+    ($this:ident, $decode_fn:path) => {{
+        tag!(StartElement, $this)?;
+        let value = match $this.next_element() {
+            Some(XmlEvent::Characters(value)) => $decode_fn(value),
+            Some(elem) => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                needed: "Time value",
+                found: alloc::format!("{elem:?}"),
+            })),
+            None => Err(error!(EndOfXmlInput)),
+        };
+        tag!(EndElement, $this)?;
+        value
+    }};
+}
+
 macro_rules! value_or_empty {
     ($this:ident, $tag:expr, $parser:ident, $expected:expr) => {{
         let value = match $this.peek() {
@@ -536,14 +552,17 @@ impl crate::Decoder for Decoder {
     }
 
     fn decode_utc_time(&mut self, _tag: Tag) -> Result<crate::types::UtcTime, Self::Error> {
-        todo!()
+        decode_time!(self, crate::ber::de::Decoder::parse_any_utc_time_string)
     }
 
     fn decode_generalized_time(
         &mut self,
         _tag: Tag,
     ) -> Result<crate::types::GeneralizedTime, Self::Error> {
-        todo!()
+        decode_time!(
+            self,
+            crate::ber::de::Decoder::parse_any_generalized_time_string
+        )
     }
 
     fn decode_set<FIELDS, SET, D, F>(
@@ -596,15 +615,44 @@ impl crate::Decoder for Decoder {
     where
         D: crate::types::DecodeChoice,
     {
-        todo!()
+        tag!(StartElement, self)?;
+        match self.peek() {
+            Some(XmlEvent::StartElement { name, .. }) => {
+                let tag = D::IDENTIFIERS
+                    .iter()
+                    .enumerate()
+                    .find(|(_, id)| 
+                        id.eq_ignore_ascii_case(&name.local_name)
+                    )
+                    .and_then(|(i, _)| {
+                        variants::Variants::from_slice(
+                            &[D::VARIANTS, D::EXTENDED_VARIANTS.unwrap_or(&[])].concat(),
+                        )
+                        .get(i)
+                        .cloned()
+                    })
+                    .unwrap_or(Tag::EOC);
+                let events = self
+                    .stack
+                    .pop()
+                    .ok_or_else(|| error!(EndOfXmlInput))?
+                    .events;
+                let mut variant_decoder = Decoder::try_from(events)?;
+                D::from_tag(&mut variant_decoder, tag)
+            }
+            elem => Err(DecodeError::from(XerDecodeErrorKind::XmlTypeMismatch {
+                needed: "Start element of choice option",
+                found: alloc::format!("{elem:?}"),
+            })),
+        }
     }
 
     fn decode_optional<D: Decode>(&mut self) -> Result<Option<D>, Self::Error> {
-        todo!()
+        Ok(D::decode(self).ok())
     }
 
     fn decode_optional_with_tag<D: Decode>(&mut self, _tag: Tag) -> Result<Option<D>, Self::Error> {
-        todo!()
+        self.decode_optional()
     }
 
     fn decode_optional_with_constraints<D: Decode>(
@@ -976,6 +1024,126 @@ mod tests {
         assert_eq!(
             SetOfType::decode(&mut decoder).unwrap(),
             SetOfType(expected)
+        )
+    }
+
+    #[test]
+    fn generalized_time() {
+        let mut decoder =
+            Decoder::new(r#"<TimeType>20001231235959.999+0000</TimeType>"#.as_bytes()).unwrap();
+
+        assert_eq!(
+            crate::types::GeneralizedTime::decode(&mut decoder).unwrap(),
+            GeneralizedTime::from(
+                chrono::NaiveDate::from_ymd_opt(2000, 12, 31)
+                    .unwrap()
+                    .and_hms_milli_opt(23, 59, 59, 999)
+                    .unwrap()
+                    .and_utc()
+            )
+        )
+    }
+
+    #[test]
+    fn utc_time() {
+        let mut decoder = Decoder::new(r#"<TimeType>991231235900Z</TimeType>"#.as_bytes()).unwrap();
+
+        assert_eq!(
+            crate::types::UtcTime::decode(&mut decoder).unwrap(),
+            UtcTime::from(
+                chrono::NaiveDate::from_ymd_opt(1999, 12, 31)
+                    .unwrap()
+                    .and_hms_opt(23, 59, 0)
+                    .unwrap()
+                    .and_utc()
+            )
+        )
+    }
+
+    #[derive(AsnType, Debug, Decode, PartialEq)]
+    #[rasn(automatic_tags)]
+    #[rasn(choice)]
+    #[rasn(crate_root = "crate")]
+    enum ChoiceType {
+        #[rasn(identifier = "int")]
+        Int(u8),
+        #[rasn(identifier = "bool")]
+        Bool(bool),
+    }
+
+    #[test]
+    fn choice() {
+        let mut decoder = Decoder::new(
+            r#"<ChoiceType>
+            <int>5</int>
+          </ChoiceType>"#
+                .as_bytes(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ChoiceType::decode(&mut decoder).unwrap(),
+            ChoiceType::Int(5)
+        )
+    }
+
+    #[test]
+    fn sequence_of_choices() {
+        let mut decoder = Decoder::new(
+            r#"
+        <SEQUENCE_OF>
+            <ChoiceType>
+                <int>5</int>
+            </ChoiceType>
+            <ChoiceType>
+                <bool><false/></bool>
+            </ChoiceType>
+        </SEQUENCE_OF>"#
+                .as_bytes(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            SequenceOf::<ChoiceType>::decode(&mut decoder).unwrap(),
+            vec![ChoiceType::Int(5), ChoiceType::Bool(false)]
+        )
+    }
+
+    #[derive(AsnType, Debug, Decode, PartialEq)]
+    #[rasn(automatic_tags)]
+    #[rasn(crate_root = "crate")]
+    struct OptionalTest {
+        wine: Option<bool>,
+        grappa: BitString,
+    }
+
+    #[test]
+    fn optional_present() {
+        let mut decoder = Decoder::new(
+            "<TestTypeA><grappa>1010</grappa><wine><false/></wine></TestTypeA>".as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            OptionalTest::decode(&mut decoder).unwrap(),
+            OptionalTest {
+                wine: Some(false),
+                grappa: bitvec::bitvec![u8, bitvec::prelude::Msb0; 1, 0, 1, 0]
+            }
+        )
+    }
+
+    #[test]
+    fn optional_absent() {
+        let mut decoder = Decoder::new(
+            "<TestTypeA><grappa>1010</grappa></TestTypeA>".as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            OptionalTest::decode(&mut decoder).unwrap(),
+            OptionalTest {
+                wine: None,
+                grappa: bitvec::bitvec![u8, bitvec::prelude::Msb0; 1, 0, 1, 0]
+            }
         )
     }
 }

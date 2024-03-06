@@ -75,7 +75,10 @@ impl Enum {
         let identifiers = self
             .variants
             .iter()
-            .map(|v| syn::LitStr::new(&v.ident.to_string(), proc_macro2::Span::call_site()))
+            .map(|v| {
+                let config = VariantConfig::new(v, &self.generics, &self.config);
+                config.identifier.unwrap_or(syn::LitStr::new(&v.ident.to_string(), proc_macro2::Span::call_site()))
+            })
             .collect_vec();
 
         let constraints_def = self.config.constraints.const_static_def(crate_root);
